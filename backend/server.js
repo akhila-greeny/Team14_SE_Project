@@ -9,6 +9,8 @@ app.use('/api/drives', drivesRouter);
 
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/drives', require('./routes/eligibleDrives'));
+app.use('/api', require('./routes/apply'));
 app.listen(3000, () => console.log('Server running on port 3000'));
+
 
 
