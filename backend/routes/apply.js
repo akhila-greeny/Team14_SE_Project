@@ -3,12 +3,12 @@ const requireRole = require('../middleware/requireRole');
 const { STUDENT } = require('../utils/roles');
 const { listDrives } = require('../data/drivesStore');
 const { getProfile } = require('../data/profilesStore');
-const { addApplication, listApplicationsByStudent } = require('../data/applicationsStore');
+const { findApplication, addApplication, listApplicationsByStudent } = require('../data/applicationsStore');
 const { isEligible } = require('../utils/eligibility');
 
 const router = express.Router();
 
-// OIPP-F-009: apply using the stored profile, nothing to re-enter
+// OIPP-F-009 + OIPP-F-010: apply once per drive
 router.post('/drives/:driveId/apply', requireRole(STUDENT), (req, res) => {
   const driveId = Number(req.params.driveId);
   const drive = listDrives().find((d) => d.id === driveId);
@@ -21,11 +21,14 @@ router.post('/drives/:driveId/apply', requireRole(STUDENT), (req, res) => {
     return res.status(403).json({ error_code: 'NOT_ELIGIBLE', message: 'You are not eligible for this drive' });
   }
 
+  if (findApplication(req.user.id, driveId)) {
+    return res.status(409).json({ error_code: 'ALREADY_APPLIED', message: 'You have already applied to this drive' });
+  }
+
   const application = addApplication(req.user.id, driveId);
   res.status(201).json({ applicationId: application.id, status: application.status });
 });
 
-// "My Applications"
 router.get('/applications', requireRole(STUDENT), (req, res) => {
   const drives = listDrives();
   const rows = listApplicationsByStudent(req.user.id).map((a) => {
