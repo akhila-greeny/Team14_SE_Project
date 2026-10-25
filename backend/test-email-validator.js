@@ -1,5 +1,5 @@
 const {
-  APPROVED_DOMAIN,
+  APPROVED_DOMAINS,
   normalizeEmail,
   validateInstitutionalEmail,
 } = require('./utils/emailValidator');
@@ -23,44 +23,54 @@ function assert(description, condition, actualDetails) {
 console.log('====================================================');
 console.log(`TEST SUITE: Institutional Email Domain Validation`);
 console.log(`Requirement: OIPP-SR-003 / Issue #28`);
-console.log(`Confirmed Domain: @${APPROVED_DOMAIN}`);
+console.log(`Approved Domains: ${APPROVED_DOMAINS.map((d) => '@' + d).join(', ')}`);
 console.log('====================================================\n');
 
-// 1. Valid address at the approved domain
+// 1. Valid address at the approved domains (stu.pes.edu for students and pes.edu for teachers/TPO)
 {
-  const result = validateInstitutionalEmail('pes2ug24cs023@stu.pes.edu');
+  const studentResult = validateInstitutionalEmail('pes2ug24cs023@stu.pes.edu');
   assert(
-    'Valid student email at approved domain is accepted',
-    result.isValid === true && result.normalized === 'pes2ug24cs023@stu.pes.edu' && result.error === null,
-    result
+    'Valid student email at @stu.pes.edu is accepted',
+    studentResult.isValid === true && studentResult.normalized === 'pes2ug24cs023@stu.pes.edu' && studentResult.error === null,
+    studentResult
+  );
+
+  const teacherResult = validateInstitutionalEmail('faculty.member@pes.edu');
+  assert(
+    'Valid teacher/faculty email at @pes.edu is accepted',
+    teacherResult.isValid === true && teacherResult.normalized === 'faculty.member@pes.edu' && teacherResult.error === null,
+    teacherResult
+  );
+
+  const tpoResult = validateInstitutionalEmail('tpo@pes.edu');
+  assert(
+    'Valid TPO email at @pes.edu is accepted',
+    tpoResult.isValid === true && tpoResult.normalized === 'tpo@pes.edu' && tpoResult.error === null,
+    tpoResult
   );
 
   const resultWithPlus = validateInstitutionalEmail('student+placement@stu.pes.edu');
   assert(
-    'Valid student email with plus-tag at approved domain is accepted',
+    'Valid student email with plus-tag at @stu.pes.edu is accepted',
     resultWithPlus.isValid === true && resultWithPlus.normalized === 'student+placement@stu.pes.edu',
     resultWithPlus
   );
 }
 
-// 2. Address at a different domain
+// 2. Address at a different / external domain
 {
   const gmail = validateInstitutionalEmail('student@gmail.com');
   assert(
     'External domain (gmail.com) is rejected',
-    gmail.isValid === false && gmail.error.includes('Email domain must be @stu.pes.edu'),
+    gmail.isValid === false && gmail.error.includes('@stu.pes.edu') && gmail.error.includes('@pes.edu'),
     gmail
   );
 
-  const generalPes = validateInstitutionalEmail('student@pes.edu');
-  assert(
-    'Different institution sub-domain (pes.edu) is rejected',
-    generalPes.isValid === false && generalPes.error.includes('Email domain must be @stu.pes.edu'),
-    generalPes
-  );
-
-  const yahoo = validateInstitutionalEmail('student@yahoo.co.in');
+  const yahoo = validateInstitutionalEmail('teacher@yahoo.co.in');
   assert('External domain (yahoo.co.in) is rejected', yahoo.isValid === false, yahoo);
+
+  const hotmail = validateInstitutionalEmail('user@hotmail.com');
+  assert('External domain (hotmail.com) is rejected', hotmail.isValid === false, hotmail);
 }
 
 // 3. Malformed address
@@ -71,8 +81,14 @@ console.log('====================================================\n');
   const doubleAt = validateInstitutionalEmail('student@@stu.pes.edu');
   assert('Malformed address with multiple @ is rejected', doubleAt.isValid === false && doubleAt.error === 'Malformed email address', doubleAt);
 
+  const doubleAtTeacher = validateInstitutionalEmail('teacher@@pes.edu');
+  assert('Malformed teacher address with multiple @ is rejected', doubleAtTeacher.isValid === false, doubleAtTeacher);
+
   const missingUser = validateInstitutionalEmail('@stu.pes.edu');
   assert('Malformed address missing local part is rejected', missingUser.isValid === false && missingUser.error === 'Malformed email address', missingUser);
+
+  const missingUserTeacher = validateInstitutionalEmail('@pes.edu');
+  assert('Malformed teacher address missing local part is rejected', missingUserTeacher.isValid === false, missingUserTeacher);
 
   const missingDomain = validateInstitutionalEmail('student@');
   assert('Malformed address missing domain part is rejected', missingDomain.isValid === false && missingDomain.error === 'Malformed email address', missingDomain);
@@ -84,27 +100,41 @@ console.log('====================================================\n');
   assert('Malformed address with trailing dot in domain is rejected', trailingDot.isValid === false && trailingDot.error === 'Malformed email address', trailingDot);
 }
 
-// 4. Lookalike or suffix-extended domains (security boundary checks)
+// 4. Lookalike or suffix-extended domains (security boundary checks for both domains)
 {
-  const suffixExtended = validateInstitutionalEmail('student@stu.pes.edu.attacker.com');
+  const suffixExtendedStu = validateInstitutionalEmail('student@stu.pes.edu.attacker.com');
   assert(
     'Suffix-extended domain (stu.pes.edu.attacker.com) is rejected',
-    suffixExtended.isValid === false && suffixExtended.error.includes('Email domain must be @stu.pes.edu'),
-    suffixExtended
+    suffixExtendedStu.isValid === false,
+    suffixExtendedStu
   );
 
-  const orgExtended = validateInstitutionalEmail('student@stu.pes.edu.org');
+  const suffixExtendedPes = validateInstitutionalEmail('teacher@pes.edu.attacker.com');
+  assert(
+    'Suffix-extended domain (pes.edu.attacker.com) is rejected',
+    suffixExtendedPes.isValid === false,
+    suffixExtendedPes
+  );
+
+  const orgExtendedPes = validateInstitutionalEmail('teacher@pes.edu.org');
   assert(
     'Suffix-extended domain (.org) is rejected',
-    orgExtended.isValid === false,
-    orgExtended
+    orgExtendedPes.isValid === false,
+    orgExtendedPes
   );
 
-  const prefixLookalike = validateInstitutionalEmail('student@fakestu.pes.edu');
+  const prefixLookalike = validateInstitutionalEmail('teacher@fakepes.edu');
   assert(
-    'Prefix lookalike domain (fakestu.pes.edu) is rejected',
+    'Prefix lookalike domain (fakepes.edu) is rejected',
     prefixLookalike.isValid === false,
     prefixLookalike
+  );
+
+  const prefixLookalikeStu = validateInstitutionalEmail('student@fakestu.pes.edu');
+  assert(
+    'Prefix lookalike domain (fakestu.pes.edu) is rejected',
+    prefixLookalikeStu.isValid === false,
+    prefixLookalikeStu
   );
 
   const subDomain = validateInstitutionalEmail('student@cs.stu.pes.edu');
@@ -113,15 +143,29 @@ console.log('====================================================\n');
     subDomain.isValid === false,
     subDomain
   );
+
+  const subDomainPes = validateInstitutionalEmail('teacher@ece.pes.edu');
+  assert(
+    'Unapproved sub-domain (ece.pes.edu) is rejected',
+    subDomainPes.isValid === false,
+    subDomainPes
+  );
 }
 
 // 5. Uppercase email characters
 {
-  const uppercase = validateInstitutionalEmail('PES2UG24CS023@STU.PES.EDU');
+  const uppercaseStu = validateInstitutionalEmail('PES2UG24CS023@STU.PES.EDU');
   assert(
-    'Uppercase email is accepted and properly normalized to lowercase',
-    uppercase.isValid === true && uppercase.normalized === 'pes2ug24cs023@stu.pes.edu',
-    uppercase
+    'Uppercase student email is accepted and properly normalized to lowercase',
+    uppercaseStu.isValid === true && uppercaseStu.normalized === 'pes2ug24cs023@stu.pes.edu',
+    uppercaseStu
+  );
+
+  const uppercaseTeacher = validateInstitutionalEmail('TEACHER@PES.EDU');
+  assert(
+    'Uppercase teacher email (@PES.EDU) is accepted and properly normalized to lowercase',
+    uppercaseTeacher.isValid === true && uppercaseTeacher.normalized === 'teacher@pes.edu',
+    uppercaseTeacher
   );
 
   const mixedCase = validateInstitutionalEmail('Abhirama.HY@Stu.Pes.Edu');
@@ -134,17 +178,24 @@ console.log('====================================================\n');
 
 // 6. Leading/trailing whitespace
 {
-  const whitespacePadded = validateInstitutionalEmail('   student@stu.pes.edu   ');
+  const whitespacePaddedStu = validateInstitutionalEmail('   student@stu.pes.edu   ');
   assert(
-    'Leading and trailing whitespace is trimmed and accepted',
-    whitespacePadded.isValid === true && whitespacePadded.normalized === 'student@stu.pes.edu',
-    whitespacePadded
+    'Leading and trailing whitespace for stu.pes.edu is trimmed and accepted',
+    whitespacePaddedStu.isValid === true && whitespacePaddedStu.normalized === 'student@stu.pes.edu',
+    whitespacePaddedStu
   );
 
-  const newlinePadded = validateInstitutionalEmail('\n\tstudent@stu.pes.edu\t\r\n');
+  const whitespacePaddedTeacher = validateInstitutionalEmail('   teacher@pes.edu   ');
+  assert(
+    'Leading and trailing whitespace for pes.edu is trimmed and accepted',
+    whitespacePaddedTeacher.isValid === true && whitespacePaddedTeacher.normalized === 'teacher@pes.edu',
+    whitespacePaddedTeacher
+  );
+
+  const newlinePadded = validateInstitutionalEmail('\n\tteacher@pes.edu\t\r\n');
   assert(
     'Whitespace with newlines and tabs is trimmed and accepted',
-    newlinePadded.isValid === true && newlinePadded.normalized === 'student@stu.pes.edu',
+    newlinePadded.isValid === true && newlinePadded.normalized === 'teacher@pes.edu',
     newlinePadded
   );
 }
@@ -169,9 +220,9 @@ console.log('====================================================\n');
 
 // 8. Duplicate email normalization
 {
-  const raw1 = 'Student1@STU.PES.EDU';
-  const raw2 = '   student1@stu.pes.edu   ';
-  const raw3 = 'STUDENT1@stu.pes.edu';
+  const raw1 = 'Teacher1@PES.EDU';
+  const raw2 = '   teacher1@pes.edu   ';
+  const raw3 = 'TEACHER1@pes.edu';
 
   const norm1 = normalizeEmail(raw1);
   const norm2 = normalizeEmail(raw2);
@@ -179,11 +230,10 @@ console.log('====================================================\n');
 
   assert(
     'Different casing and whitespace representations normalize to exact identical value',
-    norm1 === 'student1@stu.pes.edu' && norm1 === norm2 && norm2 === norm3,
+    norm1 === 'teacher1@pes.edu' && norm1 === norm2 && norm2 === norm3,
     { norm1, norm2, norm3 }
   );
 
-  // Demonstrate duplicate detection in a Set or Map
   const registeredEmails = new Set();
   registeredEmails.add(norm1);
 
