@@ -2,6 +2,7 @@
 const express = require('express');
 const requireRole = require('../middleware/requireRole');
 const { addDrive, listDrives } = require('../data/drivesStore');
+const { notifyAllStudents } = require('../data/notificationsStore'); // OIPP-F-018
 
 const router = express.Router();
 
@@ -61,6 +62,11 @@ router.post('/', requireRole('TPO'), (req, res) => {
     eligibility,
     deadline,
     postedBy: req.user.id,
+  });
+
+  // OIPP-F-018: tell all students about the new drive
+  notifyAllStudents('new_drive', `New drive posted: ${drive.company} - ${drive.role}`, {
+    driveId: drive.id,
   });
 
   res.status(201).json(drive);
