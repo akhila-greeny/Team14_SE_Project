@@ -24,5 +24,7 @@ setInterval(() => checkDeadlineReminders(), 60 * 60 * 1000);
 if (process.argv.includes('--seed')) addApplication(1, 1);
 
 app.use('/api/resume', require('./routes/resume'));
+app.use('/api/auth', require('./routes/auth'));
 app.listen(3000, () => console.log('Server running on port 3000'));
+
 
