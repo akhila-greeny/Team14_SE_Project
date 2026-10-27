@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { validateInstitutionalEmail, normalizeEmail } = require('../utils/emailValidator');
-const { hashPassword } = require('../utils/password');
+const { hashPassword, verifyPassword } = require('../utils/password');
 const {
   findUserByEmail,
   createPendingRegistration,
@@ -150,6 +151,57 @@ router.post('/verify-otp', (req, res) => {
   return res.status(201).json({
     message: 'Registration verified successfully',
     studentId: user.id,
+  });
+});
+
+/**
+ * POST /api/auth/login
+ * Authenticates student or TPO credentials and issues an 8-hour signed JWT.
+ * (OIPP-F-002, Issue #2)
+ */
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || typeof email !== 'string' || !email.trim() || !password || typeof password !== 'string') {
+    return res.status(400).json({
+      error_code: 'VALIDATION_ERROR',
+      message: 'Email and password are required',
+    });
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const user = findUserByEmail(normalizedEmail);
+
+  // Reject missing or unverified accounts with generic 401 message
+  if (!user || !user.isVerified) {
+    return res.status(401).json({
+      error_code: 'UNAUTHORIZED',
+      message: 'Invalid credentials',
+    });
+  }
+
+  // Verify password using bcryptjs against stored hash
+  const isMatch = await verifyPassword(password, user.passwordHash);
+  if (!isMatch) {
+    return res.status(401).json({
+      error_code: 'UNAUTHORIZED',
+      message: 'Invalid credentials',
+    });
+  }
+
+  // Issue 8-hour JWT with payload { id, role } per team lead contract
+  const secret = process.env.JWT_SECRET || 'dev-secret';
+  const token = jwt.sign(
+    { id: user.id, role: user.role },
+    secret,
+    { expiresIn: '8h' }
+  );
+
+  // Return standard response conforming to SAD Section 4.3
+  return res.status(200).json({
+    token,
+    studentId: user.id,
+    expiresIn: '8h',
   });
 });
 
