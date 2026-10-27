@@ -23,4 +23,6 @@ setInterval(() => checkDeadlineReminders(), 60 * 60 * 1000);
 // Test only: "node server.js --seed" creates one demo application (student 1, drive 1)
 if (process.argv.includes('--seed')) addApplication(1, 1);
 
+app.use('/api/resume', require('./routes/resume'));
 app.listen(3000, () => console.log('Server running on port 3000'));
+
