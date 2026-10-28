@@ -9,3 +9,4 @@
 | Users storage | PostgreSQL | In-memory store (backend/data/usersStore.js) | Same Sprint 1 in-memory approach as drives, profiles, and applications |
 | Email / OTP delivery | Transactional email service / SMTP | In-memory OTP + console.log output (5 min expiry) | No live email service configured for Sprint 1; OTP logged to server console for testing |
 | Resume template | Template saved with the profile | JSON template built from the profile; adjusted version kept in memory | Faster for Sprint 2; PDF export not built |
+| Sensitive values in logs (NF-003) | Passwords, tokens and OTPs never logged | Dev-only OTP printed to the server console | No email service yet; everything else checked by backend/test-no-plaintext.js |
