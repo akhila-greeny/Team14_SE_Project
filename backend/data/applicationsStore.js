@@ -19,6 +19,11 @@ function listApplicationsByStudent(studentId) {
   return applications.filter((a) => a.studentId === studentId);
 }
 
+// OIPP-F-019: all applications (used by the TPO statistics)
+function listApplications() {
+  return applications.slice();
+}
+
 // OIPP-F-017: find one application by its id
 function getApplicationById(id) {
   return applications.find((a) => a.id === id) || null;
@@ -43,6 +48,7 @@ module.exports = {
   findApplication,
   addApplication,
   listApplicationsByStudent,
+  listApplications,
   getApplicationById,
   updateApplicationStatus,
 };
