@@ -9,6 +9,7 @@ const { checkDeadlineReminders } = require('./utils/deadlineReminders'); // OIPP
 const { addApplication } = require('./data/applicationsStore'); // OIPP-F-017 (test seed)
 const { seedStatsDemo } = require('./utils/seedStats'); // OIPP-F-019 (test seed)
 const { seedExportDemo } = require('./utils/seedExport'); // OIPP-F-020 (test seed)
+const { seedLoadDemo } = require('./utils/seedLoad'); // OIPP-NF-005 (test seed)
 
 const app = express();
 app.use(express.json());
@@ -32,6 +33,8 @@ if (process.argv.includes('--seed')) addApplication(1, 1);
 if (process.argv.includes('--seed-stats')) seedStatsDemo();
 // Test only: "node server.js --seed-export" creates demo data for the CSV export
 if (process.argv.includes('--seed-export')) seedExportDemo();
+// Test only: "node server.js --seed-load" creates 2000 students' data for the load test
+if (process.argv.includes('--seed-load')) seedLoadDemo(2000);
 
 app.use('/api/resume/template', require('./routes/resumeTemplate'));
 app.use('/api/resume', require('./routes/resume'));
