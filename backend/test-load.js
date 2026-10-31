@@ -4,10 +4,11 @@ const roles = require('./utils/roles');
 
 const secret = process.env.JWT_SECRET || 'dev-secret';
 const BASE = process.env.BASE_URL || 'http://localhost:3000/api';
-const USERS = Number(process.env.USERS || 2000); // virtual students
+const USERS = Number(process.env.USERS || 2000); // virtual students in this process
+const OFFSET = Number(process.env.ID_OFFSET || 0); // first student id = OFFSET + 1
 const ROUNDS = 3; // how many times each student repeats the pages
-const RAMP_MS = 5000; // students join gradually over 5 seconds
-const THINK_MS = 500; // pause between rounds, like a real person
+const RAMP_MS = Number(process.env.RAMP_MS || 5000); // students join gradually
+const THINK_MS = Number(process.env.THINK_MS || 500); // pause between rounds (reading time)
 const LIMIT_MS = 3000; // NF-005: 90% of responses within 3 seconds
 
 const ENDPOINTS = [
@@ -15,12 +16,13 @@ const ENDPOINTS = [
   { name: 'My notifications', path: '/notifications' },
 ];
 
-const results = []; // { name, ms, ok }
+const results = []; // { name, ms, ok, reason }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function hit(endpoint, token) {
   const start = performance.now();
   let ok = false;
+  let reason = '';
   try {
     const res = await fetch(BASE + endpoint.path, {
       headers: { Authorization: 'Bearer ' + token },
@@ -28,15 +30,17 @@ async function hit(endpoint, token) {
     });
     await res.arrayBuffer(); // read the whole response
     ok = res.status === 200;
+    if (!ok) reason = 'HTTP ' + res.status;
   } catch (err) {
     ok = false;
+    reason = (err.cause && (err.cause.code || err.cause.message)) || err.name || 'unknown error';
   }
-  results.push({ name: endpoint.name, ms: performance.now() - start, ok });
+  results.push({ name: endpoint.name, ms: performance.now() - start, ok, reason });
 }
 
 async function student(i) {
   await sleep((i / USERS) * RAMP_MS);
-  const token = jwt.sign({ id: i, role: roles.STUDENT || 'Student' }, secret);
+  const token = jwt.sign({ id: OFFSET + i, role: roles.STUDENT || 'Student' }, secret);
   for (let r = 0; r < ROUNDS; r++) {
     for (const e of ENDPOINTS) await hit(e, token);
     await sleep(THINK_MS);
@@ -65,7 +69,10 @@ function summary(label, rows) {
 }
 
 (async () => {
-  console.log(`Simulating ${USERS} concurrent students against ${BASE} ...`);
+  console.log(
+    `Simulating ${USERS} concurrent students (ids ${OFFSET + 1}-${OFFSET + USERS}), ` +
+      `ramp-up ${RAMP_MS} ms, think time ${THINK_MS} ms, against ${BASE} ...`
+  );
   const start = performance.now();
   await Promise.all(Array.from({ length: USERS }, (_, i) => student(i + 1)));
   const seconds = (performance.now() - start) / 1000;
@@ -74,9 +81,20 @@ function summary(label, rows) {
   ENDPOINTS.forEach((e) => summary(e.name, results.filter((r) => r.name === e.name)));
   const overall = summary('OVERALL', results);
 
+  // Why did requests fail?
+  const reasons = {};
+  results.filter((r) => !r.ok).forEach((r) => {
+    reasons[r.reason] = (reasons[r.reason] || 0) + 1;
+  });
+  if (Object.keys(reasons).length > 0) {
+    console.log('\nFailure reasons:');
+    Object.entries(reasons).forEach(([reason, count]) => console.log('  ' + reason + ': ' + count));
+  }
+
   const pass = overall.errors === 0 && overall.p90 <= LIMIT_MS;
   console.log(
     `\nRESULT: ${pass ? 'PASS' : 'FAIL'} ` +
       `(p90 ${overall.p90.toFixed(0)} ms, limit ${LIMIT_MS} ms, errors ${overall.errors})`
   );
+  process.exitCode = pass ? 0 : 1;
 })();
