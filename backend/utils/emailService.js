@@ -42,7 +42,7 @@ async function sendPasswordResetEmail(toEmail, resetLink) {
     // DEV / TEST mode: write to console instead of sending real email.
     // The reset link contains the raw token — never log it in production.
     // -----------------------------------------------------------------------
-    console.log('[EMAIL DEV] Password-reset link for', toEmail, ':');
+    console.log('[EMAIL DEV] Link for', toEmail, ':');
     console.log('[EMAIL DEV]', resetLink);
     return;
   }
