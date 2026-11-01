@@ -10,6 +10,7 @@ const { seedStatsDemo } = require('./utils/seedStats'); // OIPP-F-019 (test seed
 
 const app = express();
 app.use(express.json());
+app.use(express.static(require('path').join(__dirname, 'public')));
 
 app.use('/api/drives', drivesRouter);
 
@@ -32,3 +33,4 @@ app.use('/api/resume/template', require('./routes/resumeTemplate'));
 app.use('/api/resume', require('./routes/resume'));
 app.use('/api/auth', require('./routes/auth'));
 app.listen(3000, () => console.log('Server running on port 3000'));
+
