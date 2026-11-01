@@ -13,6 +13,10 @@ const {
   findResetToken,
   deleteResetToken,
   updateUserPassword,
+  isAccountLocked,
+  lockoutRemainingMs,
+  recordFailedLogin,
+  resetFailedLogins,
 } = require('../data/usersStore');
 const { sendPasswordResetEmail } = require('../utils/emailService');
 
@@ -177,6 +181,11 @@ router.post('/verify-otp', (req, res) => {
  * POST /api/auth/login
  * Authenticates student or TPO credentials and issues an 8-hour signed JWT.
  * (OIPP-F-002, Issue #2)
+ *
+ * Account lockout enforcement added in Sprint 2 (OIPP-SR-004, Issue #29):
+ * - Accounts are locked for 15 minutes after 5 consecutive failed attempts.
+ * - Correct credentials cannot bypass an active lock.
+ * - Successful login resets the failed-attempt counter.
  */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -191,7 +200,9 @@ router.post('/login', async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const user = findUserByEmail(normalizedEmail);
 
-  // Reject missing or unverified accounts with generic 401 message
+  // Reject missing or unverified accounts with generic 401 message.
+  // Do NOT reveal whether lockout is the reason when the account doesn't exist —
+  // use the same generic message to prevent enumeration.
   if (!user || !user.isVerified) {
     return res.status(401).json({
       error_code: 'UNAUTHORIZED',
@@ -199,14 +210,42 @@ router.post('/login', async (req, res) => {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Account lockout check (OIPP-SR-004)
+  // Check BEFORE password verification so that correct credentials cannot
+  // bypass an active lock.
+  // -------------------------------------------------------------------------
+  if (isAccountLocked(user)) {
+    const remainingMs = lockoutRemainingMs(user);
+    const remainingMinutes = Math.ceil(remainingMs / 60000);
+    return res.status(423).json({
+      error_code: 'ACCOUNT_LOCKED',
+      message: `Account is temporarily locked due to too many failed login attempts. Try again in ${remainingMinutes} minute(s).`,
+    });
+  }
+
   // Verify password using bcryptjs against stored hash
   const isMatch = await verifyPassword(password, user.passwordHash);
   if (!isMatch) {
+    // Record the failed attempt; may trigger a lock on the 5th failure.
+    const lockState = recordFailedLogin(user);
+
+    if (lockState.locked) {
+      // The account just became locked on this attempt.
+      return res.status(423).json({
+        error_code: 'ACCOUNT_LOCKED',
+        message: 'Account is temporarily locked due to too many failed login attempts. Try again in 15 minute(s).',
+      });
+    }
+
     return res.status(401).json({
       error_code: 'UNAUTHORIZED',
       message: 'Invalid credentials',
     });
   }
+
+  // Password correct — reset failed-login counter (OIPP-SR-004)
+  resetFailedLogins(user);
 
   // Issue 8-hour JWT with payload { id, role } per team lead contract
   const secret = process.env.JWT_SECRET || 'dev-secret';
