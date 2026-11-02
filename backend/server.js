@@ -40,5 +40,6 @@ if (process.argv.includes('--seed-load')) seedLoadDemo(2000);
 app.use('/api/resume/template', require('./routes/resumeTemplate'));
 app.use('/api/resume', require('./routes/resume'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/interview-questions', require('./routes/interviewQuestions')); // OIPP-F-014
 app.listen(3000, () => console.log('Server running on port 3000'));
 
