@@ -11,3 +11,4 @@
 | Resume template | Template saved with the profile | JSON template built from the profile; adjusted version kept in memory | Faster for Sprint 2; PDF export not built |
 | Sensitive values in logs (NF-003) | Passwords, tokens and OTPs never logged | Dev-only OTP printed to the server console | No email service yet; everything else checked by backend/test-no-plaintext.js |
 | Front end | React single-page app | Plain accessible HTML/JS page served by Express (backend/public/index.html) | Faster for Sprint 2; same REST API |
+| Concurrent users (NF-005) | 2,000 students, p90 within 3 s | Tested up to 2,000; passes at 500 (p90 948 ms), fails at 1,000+ (about 16% refused connections at 2,000) | Single laptop, in-memory storage; see PR #48 and backend/test-load.js. Not met on this setup |
