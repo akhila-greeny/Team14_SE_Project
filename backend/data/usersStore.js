@@ -1,11 +1,16 @@
 const { hashPasswordSync } = require('../utils/password');
 const { normalizeEmail } = require('../utils/emailValidator');
 const { STUDENT, TPO } = require('../utils/roles');
+const crypto = require('crypto');
 
 // Temporary in-memory storage for users and pending registrations (Sprint 1 approach).
 let users = [];
 let nextId = 1;
 const pendingRegistrations = new Map();
+
+// In-memory store for password reset tokens (OIPP-F-003, Issue #3).
+// Key: SHA-256 hex digest of the raw token.  Value: { tokenHash, userId, expiresAt }.
+const passwordResetTokens = new Map();
 
 /**
  * Initializes default seeded accounts for demonstration and testing.
@@ -139,11 +144,86 @@ function completeRegistration(email) {
   return user;
 }
 
+// ---------------------------------------------------------------------------
+// Password reset token helpers (OIPP-F-003, Issue #3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes the SHA-256 hex digest of a raw reset token string.
+ * Only the digest is stored; the raw token travels only in the reset URL.
+ *
+ * @param {string} rawToken
+ * @returns {string} SHA-256 hex digest
+ */
+function hashResetToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+/**
+ * Stores a hashed reset token for a given user ID with an expiry timestamp.
+ * Any previous token for the same user is overwritten (one active token per user).
+ *
+ * @param {number} userId
+ * @param {string} rawToken - The raw (unhashed) token; only the hash is stored.
+ * @param {number} expiresAt - Unix-ms timestamp when the token expires.
+ * @returns {string} The tokenHash that was stored.
+ */
+function storeResetToken(userId, rawToken, expiresAt) {
+  const tokenHash = hashResetToken(rawToken);
+  passwordResetTokens.set(tokenHash, {
+    tokenHash,
+    userId: Number(userId),
+    expiresAt: Number(expiresAt),
+  });
+  return tokenHash;
+}
+
+/**
+ * Looks up a reset-token record by the raw (unhashed) token value.
+ * Returns null if no matching record exists.
+ *
+ * @param {string} rawToken
+ * @returns {{ tokenHash: string, userId: number, expiresAt: number }|null}
+ */
+function findResetToken(rawToken) {
+  const tokenHash = hashResetToken(rawToken);
+  return passwordResetTokens.get(tokenHash) || null;
+}
+
+/**
+ * Deletes the reset-token record identified by its raw token value.
+ * Call this after a successful password reset to prevent reuse.
+ *
+ * @param {string} rawToken
+ * @returns {boolean}
+ */
+function deleteResetToken(rawToken) {
+  const tokenHash = hashResetToken(rawToken);
+  return passwordResetTokens.delete(tokenHash);
+}
+
+/**
+ * Updates the passwordHash field on the user object identified by userId.
+ * Returns the updated user object or null if not found.
+ *
+ * @param {number} userId
+ * @param {string} newPasswordHash - New bcrypt hash.
+ * @returns {object|null}
+ */
+function updateUserPassword(userId, newPasswordHash) {
+  const numId = Number(userId);
+  const user = users.find((u) => u.id === numId);
+  if (!user) return null;
+  user.passwordHash = newPasswordHash;
+  return user;
+}
+
 /**
  * Resets the in-memory store to its initial seeded state. Useful for test isolation.
  */
 function resetStore() {
   nextId = 1;
+  passwordResetTokens.clear();
   initSeedAccounts();
 }
 
@@ -156,4 +236,9 @@ module.exports = {
   deletePendingRegistration,
   completeRegistration,
   resetStore,
+  // Password reset (OIPP-F-003)
+  storeResetToken,
+  findResetToken,
+  deleteResetToken,
+  updateUserPassword,
 };
