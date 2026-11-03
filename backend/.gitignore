@@ -1,3 +1,9 @@
 
 node_modules
 .env
+# TLS certificate files – never commit private key material (OIPP-SR-001)
+certs/
+*.pem
+*.key
+*.p12
+*.pfx
