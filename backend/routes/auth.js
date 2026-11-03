@@ -318,12 +318,12 @@ router.post('/forgot-password', async (req, res) => {
       //    transport.  Delivery errors are caught and logged but do not change
       //    the response to the caller.
       await sendPasswordResetEmail(normalizedEmail, resetLink).catch((err) => {
-        console.error('[AUTH] Failed to deliver password-reset email:', err.message);
+        console.error('[AUTH] Failed to deliver link:', err.message);
       });
     }
   } catch (err) {
     // Log internal errors but do not expose details in the response.
-    console.error('[AUTH] forgot-password internal error:', err.message);
+    console.error('[AUTH] Request error:', err.message);
   }
 
   // Same response regardless of whether the email was found (avoids enumeration).
@@ -404,7 +404,7 @@ router.post('/reset-password', async (req, res) => {
       message: 'Password has been reset successfully',
     });
   } catch (err) {
-    console.error('[AUTH] reset-password internal error:', err.message);
+    console.error('[AUTH] Reset error:', err.message);
     return res.status(500).json({
       error_code: 'INTERNAL_ERROR',
       message: 'Failed to process password reset',

@@ -7,12 +7,14 @@ const applicationStatusRouter = require('./routes/applicationStatus'); // OIPP-F
 const notificationsRouter = require('./routes/notifications'); // OIPP-F-018
 const reportsRouter = require('./routes/reports'); // OIPP-F-019
 const applicantsExportRouter = require('./routes/applicantsExport'); // OIPP-F-020
+const healthRouter = require('./routes/health'); // OIPP-NF-002: /api/health and /api/health/availability
 const { checkDeadlineReminders } = require('./utils/deadlineReminders'); // OIPP-F-018
 const { addApplication } = require('./data/applicationsStore'); // OIPP-F-017 (test seed)
 const { seedStatsDemo } = require('./utils/seedStats'); // OIPP-F-019 (test seed)
 const { seedExportDemo } = require('./utils/seedExport'); // OIPP-F-020 (test seed)
 const { seedLoadDemo } = require('./utils/seedLoad'); // OIPP-NF-005 (test seed)
 const { loadTlsCredentials, buildHttpsOptions } = require('./utils/tlsConfig'); // OIPP-SR-001
+const { defaultMonitor } = require('./utils/availabilityMonitor'); // OIPP-NF-002
 
 const app = express();
 app.use(express.json());
@@ -27,6 +29,7 @@ app.use('/api', applicationStatusRouter); // OIPP-F-017: PATCH /api/applications
 app.use('/api', notificationsRouter); // OIPP-F-018: /api/notifications
 app.use('/api', reportsRouter); // OIPP-F-019: GET /api/reports/stats
 app.use('/api', applicantsExportRouter); // OIPP-F-020: GET /api/drives/:id/applicants/export
+app.use('/api', healthRouter); // OIPP-NF-002: GET /api/health, GET /api/health/availability
 
 // OIPP-F-018: check for approaching deadlines every hour
 setInterval(() => checkDeadlineReminders(), 60 * 60 * 1000);
@@ -105,6 +108,10 @@ function startServer(expressApp) {
         `[TLS] HTTP server on port ${HTTP_PORT} – redirecting all requests to HTTPS`
       );
     });
+
+    // OIPP-NF-002: Start availability monitoring against the HTTPS health check
+    const monitorUrl = process.env.AVAILABILITY_PROBE_URL || `https://127.0.0.1:${HTTPS_PORT}/api/health`;
+    defaultMonitor.start(monitorUrl);
   } else if (isProduction) {
     // -----------------------------------------------------------------------
     // Production with no cert → fail safely (never serve plaintext).
@@ -127,6 +134,10 @@ function startServer(expressApp) {
     http.createServer(expressApp).listen(HTTP_PORT, () => {
       console.log(`Server running on port ${HTTP_PORT} (HTTP only – development mode)`);
     });
+
+    // OIPP-NF-002: Start availability monitoring against the HTTP health check
+    const monitorUrl = process.env.AVAILABILITY_PROBE_URL || `http://127.0.0.1:${HTTP_PORT}/api/health`;
+    defaultMonitor.start(monitorUrl);
   }
 }
 
