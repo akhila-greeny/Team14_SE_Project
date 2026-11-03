@@ -12,9 +12,18 @@ const pendingRegistrations = new Map();
 // Key: SHA-256 hex digest of the raw token.  Value: { tokenHash, userId, expiresAt }.
 const passwordResetTokens = new Map();
 
+// ---------------------------------------------------------------------------
+// Account lockout constants (OIPP-SR-004, Issue #29)
+// ---------------------------------------------------------------------------
+/** Maximum consecutive failed login attempts before the account is locked. */
+const LOCKOUT_MAX_ATTEMPTS = 5;
+/** Lockout duration in milliseconds (15 minutes). */
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 /**
  * Initializes default seeded accounts for demonstration and testing.
  * Seeded accounts are already verified and not treated as pending.
+ * Each user record also carries lockout tracking fields.
  */
 function initSeedAccounts() {
   users = [
@@ -25,6 +34,9 @@ function initSeedAccounts() {
       role: STUDENT,
       isVerified: true,
       createdAt: new Date().toISOString(),
+      // Lockout state (OIPP-SR-004)
+      failedLoginAttempts: 0,
+      lockedUntil: null,
     },
     {
       id: nextId++,
@@ -33,6 +45,9 @@ function initSeedAccounts() {
       role: TPO,
       isVerified: true,
       createdAt: new Date().toISOString(),
+      // Lockout state (OIPP-SR-004)
+      failedLoginAttempts: 0,
+      lockedUntil: null,
     },
   ];
   pendingRegistrations.clear();
@@ -137,6 +152,9 @@ function completeRegistration(email) {
     role: STUDENT,
     isVerified: true,
     createdAt: new Date().toISOString(),
+    // Lockout state initialised for new accounts (OIPP-SR-004)
+    failedLoginAttempts: 0,
+    lockedUntil: null,
   };
 
   users.push(user);
@@ -218,6 +236,66 @@ function updateUserPassword(userId, newPasswordHash) {
   return user;
 }
 
+// ---------------------------------------------------------------------------
+// Account lockout helpers (OIPP-SR-004, Issue #29)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the user's account is currently locked.
+ * A lock is active when lockedUntil is a future timestamp.
+ *
+ * @param {object} user - User record from the store.
+ * @returns {boolean}
+ */
+function isAccountLocked(user) {
+  if (!user || !user.lockedUntil) return false;
+  return Date.now() < user.lockedUntil;
+}
+
+/**
+ * Returns the remaining lockout duration in milliseconds, or 0 if not locked.
+ *
+ * @param {object} user
+ * @returns {number}
+ */
+function lockoutRemainingMs(user) {
+  if (!isAccountLocked(user)) return 0;
+  return user.lockedUntil - Date.now();
+}
+
+/**
+ * Records a failed login attempt for the given user.
+ * If the failure count reaches LOCKOUT_MAX_ATTEMPTS, the account is locked
+ * for LOCKOUT_DURATION_MS milliseconds.
+ *
+ * @param {object} user - Live user record (mutated in place).
+ * @returns {{ locked: boolean, attempts: number, lockedUntil: number|null }}
+ */
+function recordFailedLogin(user) {
+  user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+
+  if (user.failedLoginAttempts >= LOCKOUT_MAX_ATTEMPTS) {
+    user.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
+  }
+
+  return {
+    locked: isAccountLocked(user),
+    attempts: user.failedLoginAttempts,
+    lockedUntil: user.lockedUntil || null,
+  };
+}
+
+/**
+ * Resets the failed-login counter and clears any active lock.
+ * Called on successful authentication.
+ *
+ * @param {object} user - Live user record (mutated in place).
+ */
+function resetFailedLogins(user) {
+  user.failedLoginAttempts = 0;
+  user.lockedUntil = null;
+}
+
 /**
  * Resets the in-memory store to its initial seeded state. Useful for test isolation.
  */
@@ -241,4 +319,11 @@ module.exports = {
   findResetToken,
   deleteResetToken,
   updateUserPassword,
+  // Account lockout (OIPP-SR-004)
+  LOCKOUT_MAX_ATTEMPTS,
+  LOCKOUT_DURATION_MS,
+  isAccountLocked,
+  lockoutRemainingMs,
+  recordFailedLogin,
+  resetFailedLogins,
 };
