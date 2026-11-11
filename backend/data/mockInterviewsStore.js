@@ -12,9 +12,11 @@ function addSlot({ reviewerId, reviewerName, startsAt, durationMinutes = 30 }) {
     reviewerName: reviewerName || `Reviewer ${reviewerId}`,
     startsAt: new Date(startsAt).toISOString(),
     durationMinutes,
-    status: 'open', // open -> booked
+    status: 'open', // open -> booked -> completed
     studentId: null,
     bookedAt: null,
+    completedAt: null, // OIPP-F-016
+    feedback: null, // OIPP-F-016: { text, byUserId, recordedAt }
   };
   slots.push(slot);
   return slot;
