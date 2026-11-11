@@ -48,6 +48,7 @@ app.use('/api/resume/template', require('./routes/resumeTemplate'));
 app.use('/api/resume', require('./routes/resume'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/interview-questions', require('./routes/interviewQuestions')); // OIPP-F-014
+app.use('/api/mock-interviews', require('./routes/mockInterviews')); // OIPP-F-015
 
 // ---------------------------------------------------------------------------
 // OIPP-SR-001: HTTPS / TLS server startup
