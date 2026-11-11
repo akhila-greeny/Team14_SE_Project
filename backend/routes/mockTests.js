@@ -1,7 +1,7 @@
 const express = require('express');
 const requireRole = require('../middleware/requireRole');
 const { STUDENT } = require('../utils/roles');
-const { listTests, getTest, createAttempt, getAttempt } = require('../data/mockTestsStore');
+const { listTests, getTest, createAttempt, getAttempt, listAttempts } = require('../data/mockTestsStore');
 const { isExpired, finalizeAttempt, autoSubmitIfExpired, startAutoSubmitSweep } = require('../utils/mockTestTimer');
 
 const router = express.Router();
@@ -67,6 +67,29 @@ function cleanAnswers(test, answers) {
 router.get('/', requireRole(STUDENT), (req, res) => {
   const topic = typeof req.query.topic === 'string' ? req.query.topic : '';
   res.json(listTests(topic).map(publicTest));
+});
+
+// OIPP-F-013 / AC-013: GET /api/mock-tests/history
+// The logged-in student's submitted attempts, oldest first (chronological).
+// Declared before /:id so "history" is not read as a test id.
+router.get('/history', requireRole(STUDENT), (req, res) => {
+  const history = listAttempts()
+    .filter((a) => a.studentId === req.user.id)
+    .map(autoSubmitIfExpired)
+    .filter((a) => a.status === 'submitted')
+    .sort((x, y) => Date.parse(x.submittedAt) - Date.parse(y.submittedAt) || x.id - y.id)
+    .map((a) => ({
+      attemptId: a.id,
+      testId: a.testId,
+      topic: a.topic,
+      score: a.score,
+      total: a.total,
+      percentage: a.percentage,
+      autoSubmitted: a.autoSubmitted,
+      startedAt: a.startedAt,
+      submittedAt: a.submittedAt,
+    }));
+  res.json({ studentId: req.user.id, attemptCount: history.length, attempts: history });
 });
 
 // GET /api/mock-tests/:id -> the test's questions, without answers
