@@ -30,6 +30,7 @@ app.use('/api', notificationsRouter); // OIPP-F-018: /api/notifications
 app.use('/api', reportsRouter); // OIPP-F-019: GET /api/reports/stats
 app.use('/api', applicantsExportRouter); // OIPP-F-020: GET /api/drives/:id/applicants/export
 app.use('/api', healthRouter); // OIPP-NF-002: GET /api/health, GET /api/health/availability
+app.use('/api/mock-tests', require('./routes/mockTests')); // OIPP-F-011
 
 // OIPP-F-018: check for approaching deadlines every hour
 setInterval(() => checkDeadlineReminders(), 60 * 60 * 1000);
