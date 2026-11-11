@@ -25,7 +25,19 @@ function withQuestions(test) {
   };
 }
 
+// OIPP-F-012: once submitted, also show which questions were right.
+function resultDetails(attempt) {
+  const test = getTest(attempt.testId);
+  return test.questions.map((q) => ({
+    questionId: q.id,
+    yourAnswer: attempt.answers[q.id] ?? null,
+    correctAnswer: q.answerIndex,
+    correct: attempt.answers[q.id] === q.answerIndex,
+  }));
+}
+
 function attemptView(attempt) {
+  if (attempt.status === 'submitted') return { ...attempt, secondsLeft: 0, results: resultDetails(attempt) };
   const secondsLeft = Math.max(0, Math.ceil((Date.parse(attempt.expiresAt) - Date.now()) / 1000));
   return { ...attempt, secondsLeft: attempt.status === 'in_progress' ? secondsLeft : 0 };
 }
