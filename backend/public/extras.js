@@ -523,3 +523,43 @@ async function mfLoadSessions() {
 
 onClick('mf-load', mfLoadSessions);
 
+// OIPP-F-003-FRONTEND: Forgot Password
+$('login-section').insertAdjacentHTML('beforeend',
+  '<button type="button" id="forgot-toggle">Forgot Password?</button>' +
+  '<form id="forgot-form" hidden>' +
+  '<label for="forgot-email">College email</label>' +
+  '<input id="forgot-email" type="email" required>' +
+  '<button type="submit">Send Reset Link</button>' +
+  '</form>' +
+  '<p id="forgot-status" role="status" aria-live="polite"></p>'
+);
+
+$('forgot-toggle').addEventListener('click', () => {
+  $('forgot-form').hidden = !$('forgot-form').hidden;
+  $('forgot-email').value = $('email').value.trim();
+});
+
+$('forgot-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const status = $('forgot-status');
+  status.textContent = 'Sending reset link...';
+
+  try {
+    const response = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('forgot-email').value.trim() })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Could not send reset link.');
+    }
+
+    status.textContent = data.message;
+  } catch (error) {
+    status.textContent = error.message;
+  }
+});

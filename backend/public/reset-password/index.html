@@ -1,0 +1,64 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Password</title>
+</head>
+<body>
+  <main>
+    <h2>Reset Your Password</h2>
+    <form id="reset-form">
+      <label for="new-password">New password</label>
+      <input id="new-password" type="password" minlength="6" required>
+      <label for="confirm-password">Confirm new password</label>
+      <input id="confirm-password" type="password" minlength="6" required>
+      <button type="submit">Reset Password</button>
+    </form>
+    <p id="reset-status" role="status" aria-live="polite"></p>
+    <a href="/">Return to login</a>
+  </main>
+
+  <script>
+    const token = new URLSearchParams(window.location.search).get('token');
+    const form = document.getElementById('reset-form');
+    const status = document.getElementById('reset-status');
+
+    if (!token) {
+      status.textContent = 'Reset link is missing or invalid.';
+      form.hidden = true;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      if (newPassword !== confirmPassword) {
+        status.textContent = 'Passwords do not match.';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, newPassword })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Password reset failed.');
+        }
+
+        status.textContent = 'Password reset successfully! You can now log in.';
+        form.hidden = true;
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>
