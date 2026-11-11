@@ -62,4 +62,60 @@ router.get('/schedule', requireRole(STUDENT), (req, res) => {
   res.json(sessions);
 });
 
+// ---------------------------------------------------------------------------
+// OIPP-F-016: feedback on a completed mock-interview session.
+// A session is a booked slot; only its student and reviewer can see it.
+// ---------------------------------------------------------------------------
+function ownSession(req, res) {
+  const s = getSlot(req.params.id);
+  const me = req.user.id;
+  if (!s || s.status === 'open' || (s.studentId !== me && s.reviewerId !== me)) {
+    res.status(404).json({ error_code: 'SESSION_NOT_FOUND', message: 'Session not found' });
+    return null;
+  }
+  return s;
+}
+
+// GET /api/mock-interviews/sessions/:id -> reopen a session (with its feedback)
+router.get('/sessions/:id', requireRole(STUDENT), (req, res) => {
+  const s = ownSession(req, res);
+  if (!s) return;
+  res.json({ ...s, myRole: s.reviewerId === req.user.id ? 'reviewer' : 'student' });
+});
+
+// POST /api/mock-interviews/sessions/:id/complete -> reviewer marks it done
+router.post('/sessions/:id/complete', requireRole(STUDENT), (req, res) => {
+  const s = ownSession(req, res);
+  if (!s) return;
+  if (s.reviewerId !== req.user.id) {
+    return res.status(403).json({ error_code: 'NOT_REVIEWER', message: 'Only the reviewer can mark the session completed' });
+  }
+  if (s.status === 'completed') {
+    return res.status(409).json({ error_code: 'ALREADY_COMPLETED', message: 'Session is already completed' });
+  }
+  s.status = 'completed';
+  s.completedAt = new Date().toISOString();
+  res.json(s);
+});
+
+// POST /api/mock-interviews/sessions/:id/feedback  body: { text }
+// The reviewer records feedback once the session is completed.
+router.post('/sessions/:id/feedback', requireRole(STUDENT), (req, res) => {
+  const s = ownSession(req, res);
+  if (!s) return;
+  if (s.reviewerId !== req.user.id) {
+    return res.status(403).json({ error_code: 'NOT_REVIEWER', message: 'Only the reviewer can record feedback' });
+  }
+  if (s.status !== 'completed') {
+    return res.status(409).json({ error_code: 'NOT_COMPLETED', message: 'Feedback can be recorded only after the session is completed' });
+  }
+  const text = typeof (req.body && req.body.text) === 'string' ? req.body.text.trim() : '';
+  if (!text) return res.status(400).json({ error_code: 'FEEDBACK_REQUIRED', message: 'Feedback text is required' });
+  if (text.length > 2000) {
+    return res.status(400).json({ error_code: 'FEEDBACK_TOO_LONG', message: 'Feedback must be 2000 characters or fewer' });
+  }
+  s.feedback = { text, byUserId: req.user.id, recordedAt: new Date().toISOString() };
+  res.status(201).json(s);
+});
+
 module.exports = router;
