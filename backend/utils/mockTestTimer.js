@@ -1,5 +1,6 @@
 // OIPP-F-011 / AC-011: a test auto-submits when its timer runs out.
-const { listAttempts } = require('../data/mockTestsStore');
+const { listAttempts, getTest } = require('../data/mockTestsStore');
+const { gradeAttempt } = require('./grading'); // OIPP-F-012
 
 function isExpired(attempt, now = Date.now()) {
   return attempt.status === 'in_progress' && now >= Date.parse(attempt.expiresAt);
@@ -12,6 +13,8 @@ function finalizeAttempt(attempt, { auto = false } = {}) {
   attempt.status = 'submitted';
   attempt.autoSubmitted = auto;
   attempt.submittedAt = auto ? attempt.expiresAt : new Date().toISOString();
+  // OIPP-F-012: grade straight away, so the score is shown with the result.
+  Object.assign(attempt, gradeAttempt(getTest(attempt.testId), attempt.answers));
   return attempt;
 }
 
