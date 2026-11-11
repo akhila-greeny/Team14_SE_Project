@@ -321,3 +321,81 @@ onClick('mh-load', async () => {
   });
 });
 
+
+// ---- Mock Interview Slot Booking ----
+sec('student', 'mock-interviews', 'Mock Interview Slot Booking',
+  '<button type="button" id="mi-load">View available interview slots</button>' +
+  '<ul id="mi-slots"></ul>' +
+  '<h3>My Interview Schedule</h3>' +
+  '<button type="button" id="mi-schedule-load">View my schedule</button>' +
+  '<ul id="mi-schedule"></ul>'
+);
+
+onClick('mi-load', async () => {
+  const list = $('mi-slots');
+  list.innerHTML = '<li>Loading available slots...</li>';
+
+  const slots = await api('GET', '/mock-interviews/slots');
+  list.innerHTML = '';
+
+  if (!slots.length) {
+    list.innerHTML = '<li>No available interview slots currently.</li>';
+    return;
+  }
+
+  slots.forEach((slot) => {
+    const item = document.createElement('li');
+    const date = new Date(slot.startsAt).toLocaleString();
+
+    const details = document.createElement('span');
+    details.textContent =
+      'Reviewer: ' + (slot.reviewerName || 'Not specified') +
+      ' | Date: ' + date +
+      ' | Duration: ' + slot.durationMinutes + ' minutes ';
+
+    const bookButton = document.createElement('button');
+    bookButton.type = 'button';
+    bookButton.textContent = 'Book Slot';
+
+    bookButton.addEventListener('click', async () => {
+      bookButton.disabled = true;
+      try {
+        await api('POST', '/mock-interviews/slots/' + encodeURIComponent(slot.id) + '/book');
+        say('Interview slot booked successfully!', 'success');
+        item.remove();
+      } catch (err) {
+        say(err.message, 'err');
+        bookButton.disabled = false;
+      }
+    });
+
+    item.appendChild(details);
+    item.appendChild(bookButton);
+    list.appendChild(item);
+  });
+});
+
+onClick('mi-schedule-load', async () => {
+  const list = $('mi-schedule');
+  list.innerHTML = '<li>Loading your schedule...</li>';
+
+  const sessions = await api('GET', '/mock-interviews/schedule');
+  list.innerHTML = '';
+
+  if (!sessions.length) {
+    list.innerHTML = '<li>You have no booked interviews yet.</li>';
+    return;
+  }
+
+  sessions.forEach((session) => {
+    const item = document.createElement('li');
+    item.textContent =
+      'Date: ' + new Date(session.startsAt).toLocaleString() +
+      ' | Duration: ' + session.durationMinutes + ' minutes' +
+      ' | Your role: ' + session.myRole +
+      ' | Status: ' + session.status;
+
+    list.appendChild(item);
+  });
+});
+
