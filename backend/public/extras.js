@@ -399,3 +399,127 @@ onClick('mi-schedule-load', async () => {
   });
 });
 
+
+// ---- Mock Interview Feedback ----
+sec('student', 'mock-feedback', 'Mock Interview Feedback',
+  '<button type="button" id="mf-load">Load my interview sessions</button>' +
+  '<ul id="mf-sessions"></ul>'
+);
+
+async function mfLoadSessions() {
+  const list = $('mf-sessions');
+  list.innerHTML = '<li>Loading sessions...</li>';
+
+  const sessions = await api('GET', '/mock-interviews/schedule');
+  list.innerHTML = '';
+
+  if (!sessions.length) {
+    list.innerHTML = '<li>No interview sessions found.</li>';
+    return;
+  }
+
+  sessions.forEach((session) => {
+    const item = document.createElement('li');
+
+    const details = document.createElement('p');
+    details.textContent =
+      new Date(session.startsAt).toLocaleString() +
+      ' | Role: ' + session.myRole +
+      ' | Status: ' + session.status;
+
+    item.appendChild(details);
+
+    if (session.myRole === 'reviewer' && session.status === 'booked') {
+      const completeButton = document.createElement('button');
+      completeButton.type = 'button';
+      completeButton.textContent = 'Mark Interview Completed';
+
+      completeButton.addEventListener('click', async () => {
+        completeButton.disabled = true;
+        try {
+          await api(
+            'POST',
+            '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/complete'
+          );
+          say('Interview marked as completed.', 'success');
+          await mfLoadSessions();
+        } catch (err) {
+          say(err.message, 'err');
+          completeButton.disabled = false;
+        }
+      });
+
+      item.appendChild(completeButton);
+    }
+
+    if (session.myRole === 'reviewer' && session.status === 'completed') {
+      const feedbackInput = document.createElement('textarea');
+      feedbackInput.placeholder = 'Enter interview feedback (maximum 2000 characters)';
+      feedbackInput.maxLength = 2000;
+      feedbackInput.rows = 3;
+
+      const submitButton = document.createElement('button');
+      submitButton.type = 'button';
+      submitButton.textContent = 'Submit Feedback';
+
+      submitButton.addEventListener('click', async () => {
+        const feedbackText = feedbackInput.value.trim();
+
+        if (!feedbackText) {
+          say('Please enter feedback first.', 'err');
+          return;
+        }
+
+        submitButton.disabled = true;
+        try {
+          await api(
+            'POST',
+            '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/feedback',
+            { text: feedbackText }
+          );
+          say('Interview feedback submitted successfully!', 'success');
+          await mfLoadSessions();
+        } catch (err) {
+          say(err.message, 'err');
+          submitButton.disabled = false;
+        }
+      });
+
+      item.appendChild(feedbackInput);
+      item.appendChild(submitButton);
+    }
+
+    if (session.myRole === 'student') {
+      const viewButton = document.createElement('button');
+      viewButton.type = 'button';
+      viewButton.textContent = 'View Interview Feedback';
+
+      viewButton.addEventListener('click', async () => {
+        try {
+          const details = await api(
+            'GET',
+            '/mock-interviews/sessions/' + encodeURIComponent(session.id)
+          );
+
+          const feedbackDisplay = document.createElement('p');
+
+          feedbackDisplay.textContent = details.feedback
+            ? 'Reviewer Feedback: ' + details.feedback.text
+            : 'Feedback has not been submitted yet.';
+
+          item.appendChild(feedbackDisplay);
+          viewButton.disabled = true;
+        } catch (err) {
+          say(err.message, 'err');
+        }
+      });
+
+      item.appendChild(viewButton);
+    }
+
+    list.appendChild(item);
+  });
+}
+
+onClick('mf-load', mfLoadSessions);
+
