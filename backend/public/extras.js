@@ -283,3 +283,41 @@ onClick('mt-submit', async () => {
   await mtSubmitTest(false);
 });
 
+
+// ---- Mock Test Attempt History ----
+sec('student', 'mock-history', 'Mock Test Attempt History',
+  '<button type="button" id="mh-load">View my attempt history</button>' +
+  '<ul id="mh-list"></ul>'
+);
+
+onClick('mh-load', async () => {
+  const list = $('mh-list');
+  list.innerHTML = '<li>Loading history...</li>';
+
+  const data = await api('GET', '/mock-tests/history');
+  const attempts = data.attempts || [];
+
+  list.innerHTML = '';
+
+  if (attempts.length === 0) {
+    list.innerHTML = '<li>No mock test attempts yet.</li>';
+    return;
+  }
+
+  attempts.forEach((attempt) => {
+    const item = document.createElement('li');
+
+    const date = attempt.submittedAt || attempt.startedAt;
+    const formattedDate = date ? new Date(date).toLocaleString() : 'Date unavailable';
+
+    item.textContent =
+      (attempt.topic || 'Mock Test') +
+      ' | Score: ' + attempt.score + '/' + attempt.total +
+      ' | Percentage: ' + attempt.percentage + '%' +
+      ' | ' + (attempt.autoSubmitted ? 'Auto-submitted' : 'Manually submitted') +
+      ' | ' + formattedDate;
+
+    list.appendChild(item);
+  });
+});
+
