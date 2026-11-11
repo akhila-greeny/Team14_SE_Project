@@ -135,3 +135,151 @@ onClick('ap-set', async () => {
   await api('PATCH', '/applications/' + $('ap-id').value + '/status', { status: $('ap-status').value });
   say('Status updated. The student now has a notification.', 'ok');
 });
+
+// ---- Mock Tests: topic selection, timer, submission and results ----
+sec('student', 'mock-tests', 'Mock Tests',
+  '<label for="mt-topic">Choose a topic</label>' +
+  '<select id="mt-topic"><option value="">All topics</option><option value="aptitude">Aptitude</option><option value="technical">Technical</option></select>' +
+  '<button type="button" id="mt-load">Load mock tests</button>' +
+  '<ul id="mt-test-list"></ul>' +
+  '<div id="mt-active" hidden><h3 id="mt-title"></h3><p>Time remaining: <strong id="mt-timer">--:--</strong></p>' +
+  '<div id="mt-questions"></div><button type="button" id="mt-submit">Submit test</button></div>' +
+  '<div id="mt-result"></div>');
+
+let mtCurrentAttempt = null;
+let mtCurrentAnswers = {};
+let mtTimerInterval = null;
+let mtEndTime = null;
+
+function mtShowResults(attempt) {
+  clearInterval(mtTimerInterval);
+  mtCurrentAttempt = null;
+  $('mt-active').hidden = true;
+
+  const results = attempt.results || [];
+  let html = '<h3>Test Result</h3>' +
+    '<p>Score: <strong>' + attempt.score + ' / ' + attempt.total + '</strong></p>' +
+    '<p>Percentage: <strong>' + attempt.percentage + '%</strong></p>' +
+    '<p>Submission: ' + (attempt.autoSubmitted ? 'Automatic' : 'Manual') + '</p>';
+
+  results.forEach((r, i) => {
+    html += '<p>Question ' + (i + 1) + ': ' +
+      (r.correct ? 'Correct' : 'Incorrect') +
+      ' | Your answer: ' + (r.yourAnswer === null ? 'Not answered' : r.yourAnswer + 1) +
+      ' | Correct answer: ' + (r.correctAnswer + 1) + '</p>';
+  });
+
+  $('mt-result').innerHTML = html;
+  say('Mock test completed. Your score is ' + attempt.score + '/' + attempt.total, 'ok');
+}
+
+function mtUpdateTimer() {
+  if (!mtCurrentAttempt) return;
+  const seconds = Math.max(0, Math.ceil((mtEndTime - Date.now()) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  $('mt-timer').textContent = mins + ':' + String(secs).padStart(2, '0');
+
+  if (seconds <= 0) mtSubmitTest(true);
+}
+
+async function mtSubmitTest(auto) {
+  if (!mtCurrentAttempt) return;
+  const id = mtCurrentAttempt.id;
+  $('mt-submit').disabled = true;
+
+  try {
+    const result = await api('POST', '/mock-tests/attempts/' + id + '/submit',
+      { answers: mtCurrentAnswers });
+    mtShowResults(result.attempt);
+  } catch (err) {
+    if (err.status === 409) {
+      const current = await api('GET', '/mock-tests/attempts/' + id);
+      if (current.attempt.status === 'submitted') {
+        mtShowResults(current.attempt);
+        return;
+      }
+    }
+    say(err.message, 'err');
+  } finally {
+    $('mt-submit').disabled = false;
+  }
+}
+
+async function mtStartTest(id) {
+  const data = await api('POST', '/mock-tests/' + id + '/start', {});
+  mtCurrentAttempt = data.attempt;
+  mtCurrentAnswers = {};
+  mtEndTime = Date.now() + data.attempt.secondsLeft * 1000;
+
+  $('mt-result').textContent = '';
+  $('mt-active').hidden = false;
+  $('mt-title').textContent = data.test.topic;
+  $('mt-questions').textContent = '';
+
+  data.test.questions.forEach((q, index) => {
+    const section = document.createElement('section');
+    const heading = document.createElement('h4');
+    heading.textContent = (index + 1) + '. ' + q.text;
+    section.appendChild(heading);
+
+    q.options.forEach((option, optionIndex) => {
+      const label = document.createElement('label');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'mt-q-' + q.id;
+      radio.value = optionIndex;
+
+      radio.addEventListener('change', async () => {
+        mtCurrentAnswers[q.id] = optionIndex;
+        try {
+          await api('PATCH', '/mock-tests/attempts/' + mtCurrentAttempt.id + '/answers',
+            { answers: mtCurrentAnswers });
+        } catch (err) {
+          say(err.message, 'err');
+        }
+      });
+
+      label.appendChild(radio);
+      label.appendChild(document.createTextNode(' ' + option));
+      section.appendChild(label);
+      section.appendChild(document.createElement('br'));
+    });
+
+    $('mt-questions').appendChild(section);
+  });
+
+  $('mt-submit').disabled = false;
+  clearInterval(mtTimerInterval);
+  mtUpdateTimer();
+  mtTimerInterval = setInterval(mtUpdateTimer, 1000);
+  say('Mock test started. Good luck!', 'ok');
+}
+
+onClick('mt-load', async () => {
+  const topic = $('mt-topic').value;
+  const tests = await api('GET', '/mock-tests' + (topic ? '?topic=' + encodeURIComponent(topic) : ''));
+  const list = $('mt-test-list');
+  list.textContent = '';
+
+  tests.forEach((test) => {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Start ' + test.topic + ' (' + test.questionCount + ' questions)';
+    button.addEventListener('click', async () => {
+      try { await mtStartTest(test.id); }
+      catch (err) { say(err.message, 'err'); }
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  });
+
+  if (!tests.length) list.textContent = 'No tests available.';
+  say(tests.length + ' mock test(s) found.', 'ok');
+});
+
+onClick('mt-submit', async () => {
+  await mtSubmitTest(false);
+});
+
