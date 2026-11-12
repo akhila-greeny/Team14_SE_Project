@@ -1,0 +1,125 @@
+# OIPP Portal - Team 14: CI/CD pipeline
+#
+#   pull request -> main : CI  (install, syntax check, all tests on Node 20 and 22,
+#                               build Docker image, smoke-test the container)
+#   push to main         : CI + CD (publish the image to GitHub Container Registry,
+#                               then deploy if a deploy hook is configured)
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+# A newer push to the same branch cancels the older, still-running pipeline.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  # ---------------------------------------------------------------- CI ----
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20.x, 22.x]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies (exact lockfile versions)
+        run: npm ci
+
+      - name: Syntax check every JavaScript file
+        run: find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+
+      - name: Run test suite
+        run: npm test
+
+  # ------------------------------------------------- build + smoke test ----
+  docker:
+    name: Build image and smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # needed to publish to ghcr.io on main
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        # GHCR image names must be lowercase.
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/backend" >> "$GITHUB_ENV"
+
+      - name: Build Docker image
+        run: docker build -t "$IMAGE:${{ github.sha }}" .
+
+      - name: Start container
+        run: docker run -d --name oipp -p 3000:3000 "$IMAGE:${{ github.sha }}"
+
+      - name: Smoke test the running container
+        run: node smoke-test.js http://localhost:3000
+
+      - name: Show container logs if something failed
+        if: failure()
+        run: docker logs oipp
+
+      # ----------------------------------------------------------- CD ----
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish image (tags :latest and :<commit sha>)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "Published $IMAGE:latest" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+    steps:
+      # Optional: set the repository secret DEPLOY_HOOK_URL (for example a
+      # Render deploy hook) and every green push to main redeploys the app.
+      - name: Trigger deploy hook
+        if: env.DEPLOY_HOOK_URL != ''
+        working-directory: .
+        run: curl -fsS -X POST "$DEPLOY_HOOK_URL" && echo "Deploy triggered" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No deploy hook configured
+        if: env.DEPLOY_HOOK_URL == ''
+        working-directory: .
+        run: echo "Image published to GHCR. Set the DEPLOY_HOOK_URL secret to also deploy automatically." >> "$GITHUB_STEP_SUMMARY"
