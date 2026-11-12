@@ -4,7 +4,8 @@ const { app } = require('./server');
 const secret = process.env.JWT_SECRET || 'dev-secret';
 const student = jwt.sign({ id: 1, role: 'student' }, secret);
 const outsider = jwt.sign({ id: 2, role: 'student' }, secret);
-const reviewer = jwt.sign({ id: 201, role: 'student' }, secret);
+const reviewer = jwt.sign({ id: 9, role: 'TPO' }, secret); // the TPO is the interview reviewer
+const otherTpo = jwt.sign({ id: 10, role: 'TPO' }, secret);
 
 let failed = 0;
 function check(label, ok, detail) {
@@ -22,29 +23,34 @@ const server = app.listen(0, async () => {
   }
 
   try {
-    // Seeded slot 1 belongs to reviewer 201; student 1 books it.
-    await call('POST', '/slots/1/book', student);
+    // The TPO creates a slot and student 1 books it.
+    const startsAt = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString();
+    const slot = (await call('POST', '/slots', reviewer, { startsAt })).data;
+    await call('POST', `/slots/${slot.id}/book`, student);
+    const spare = (await call('POST', '/slots', reviewer, { startsAt })).data; // never booked
     const feedback = 'Good DBMS answers. Practise explaining joins with an example.';
 
-    let r = await call('POST', '/sessions/1/feedback', reviewer, { text: feedback });
+    let r = await call('POST', `/sessions/${slot.id}/feedback`, reviewer, { text: feedback });
     check('Feedback before the session is completed -> 409', r.status === 409, r);
-    r = await call('POST', '/sessions/1/complete', student);
+    r = await call('POST', `/sessions/${slot.id}/complete`, student);
     check('Student cannot mark it completed -> 403', r.status === 403, r);
-    r = await call('POST', '/sessions/1/complete', reviewer);
+    r = await call('POST', `/sessions/${slot.id}/complete`, otherTpo);
+    check('A different TPO cannot complete it -> 404', r.status === 404, r);
+    r = await call('POST', `/sessions/${slot.id}/complete`, reviewer);
     check('Reviewer marks the session completed', r.status === 200 && r.data.status === 'completed', r.data);
 
-    r = await call('POST', '/sessions/1/feedback', reviewer, { text: '   ' });
+    r = await call('POST', `/sessions/${slot.id}/feedback`, reviewer, { text: '   ' });
     check('Empty feedback -> 400', r.status === 400, r);
-    r = await call('POST', '/sessions/1/feedback', student, { text: 'I rate myself 10/10' });
+    r = await call('POST', `/sessions/${slot.id}/feedback`, student, { text: 'I rate myself 10/10' });
     check('Student cannot write the feedback -> 403', r.status === 403, r);
-    r = await call('POST', '/sessions/1/feedback', reviewer, { text: feedback });
+    r = await call('POST', `/sessions/${slot.id}/feedback`, reviewer, { text: feedback });
     check('Reviewer records feedback -> 201', r.status === 201 && r.data.feedback.text === feedback, r.data);
 
-    r = await call('GET', '/sessions/1', student);
+    r = await call('GET', `/sessions/${slot.id}`, student);
     check('AC-016: student reopens the session and sees the feedback', r.status === 200 && r.data.feedback && r.data.feedback.text === feedback, r.data);
-    r = await call('GET', '/sessions/1', outsider);
+    r = await call('GET', `/sessions/${slot.id}`, outsider);
     check('Another student cannot see the session -> 404', r.status === 404, r);
-    r = await call('GET', '/sessions/2', student);
+    r = await call('GET', `/sessions/${spare.id}`, student);
     check('An unbooked slot is not a session -> 404', r.status === 404, r);
     r = await call('GET', '/schedule', student);
     check('Completed session stays on the schedule', r.data.length === 1 && r.data[0].status === 'completed', r.data);
