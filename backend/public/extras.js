@@ -1,4 +1,4 @@
-document.head.insertAdjacentHTML('beforeend', '<style>pre{border:1px solid #767676;padding:.5rem;white-space:pre-wrap}select{padding:.5rem;font-size:1rem;border:2px solid #767676;border-radius:4px;display:block}ul{padding-left:1.2rem}</style>');
+﻿document.head.insertAdjacentHTML('beforeend', '<style>pre{border:1px solid #767676;padding:.5rem;white-space:pre-wrap}select{padding:.5rem;font-size:1rem;border:2px solid #767676;border-radius:4px;display:block}ul{padding-left:1.2rem}</style>');
 
 function sec(parent, id, title, html) {
   const s = document.createElement('section');
@@ -563,3 +563,66 @@ $('forgot-form').addEventListener('submit', async (event) => {
     status.textContent = error.message;
   }
 });
+
+// ---- OIPP-F-006: Auto-generated resume template ----
+sec('student', 'resume-template', 'Create resume from my profile',
+  '<p>Generate a resume draft using your saved profile details. You can edit it before saving.</p>' +
+  '<button type="button" id="template-generate">Generate resume</button>' +
+  '<form id="template-form" hidden>' +
+  '<label>Full name</label><input id="tpl-name" required>' +
+  '<label>Email</label><input id="tpl-email" type="email" required>' +
+  '<label>Contact</label><input id="tpl-contact">' +
+  '<label>Branch</label><input id="tpl-branch">' +
+  '<label>CGPA</label><input id="tpl-cgpa" type="number" min="0" max="10" step="0.01">' +
+  '<label>Backlogs</label><input id="tpl-backlogs" type="number" min="0">' +
+  '<label>Skills (comma separated)</label><input id="tpl-skills">' +
+  '<label>Professional summary</label><textarea id="tpl-summary"></textarea>' +
+  '<button type="submit">Save resume draft</button></form>' +
+  '<pre id="template-preview"></pre>');
+
+onClick('template-generate', async () => {
+  const d = await authFetch('/resume/template').then(async r => {
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || 'Could not generate resume');
+    return data;
+  });
+  $('tpl-name').value = d.fullName || '';
+  $('tpl-email').value = d.email || '';
+  $('tpl-contact').value = d.contact || '';
+  $('tpl-branch').value = d.branch || '';
+  $('tpl-cgpa').value = d.cgpa ?? '';
+  $('tpl-backlogs').value = d.backlogs ?? '';
+  $('tpl-skills').value = (d.skills || []).join(', ');
+  $('tpl-summary').value = d.summary || '';
+  $('template-form').hidden = false;
+  say('Resume draft generated. Edit and save it.', 'ok');
+});
+
+$('template-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const d = {
+    fullName: $('tpl-name').value.trim(),
+    email: $('tpl-email').value.trim(),
+    contact: $('tpl-contact').value.trim(),
+    branch: $('tpl-branch').value.trim(),
+    cgpa: Number($('tpl-cgpa').value),
+    backlogs: Number($('tpl-backlogs').value),
+    skills: $('tpl-skills').value.split(',').map(s => s.trim()).filter(Boolean),
+    summary: $('tpl-summary').value.trim()
+  };
+  const r = await authFetch('/resume/template', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(d)
+  });
+  const result = await r.json();
+  if (!r.ok) throw new Error(result.message || 'Could not save resume');
+  $('template-preview').textContent =
+    result.fullName + '\n' + result.email + '\n' + result.contact +
+    '\n' + result.branch + ' | CGPA: ' + result.cgpa +
+    '\nSkills: ' + result.skills.join(', ') +
+    '\n\n' + result.summary;
+  say('Resume draft saved successfully.', 'ok');
+});
+
+
