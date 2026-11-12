@@ -1,4 +1,4 @@
-﻿document.head.insertAdjacentHTML('beforeend', '<style>pre{border:1px solid #767676;padding:.5rem;white-space:pre-wrap}select{padding:.5rem;font-size:1rem;border:2px solid #767676;border-radius:4px;display:block}ul{padding-left:1.2rem}</style>');
+document.head.insertAdjacentHTML('beforeend', '<style>pre{border:1px solid #767676;padding:.5rem;white-space:pre-wrap}select{padding:.5rem;font-size:1rem;border:2px solid #767676;border-radius:4px;display:block}ul{padding-left:1.2rem}</style>');
 
 function sec(parent, id, title, html) {
   const s = document.createElement('section');
@@ -400,129 +400,167 @@ onClick('mi-schedule-load', async () => {
 });
 
 
-// ---- Mock Interview Feedback ----
-sec('student', 'mock-feedback', 'Mock Interview Feedback',
-  '<button type="button" id="mf-load">Load my interview sessions</button>' +
-  '<ul id="mf-sessions"></ul>'
+// ---- Student Mock Interview Feedback ----
+sec('student', 'mock-feedback', 'My Mock Interview Feedback',
+  '<button type="button" id="mf-student-load">Load my interview sessions</button>' +
+  '<ul id="mf-student-sessions"></ul>'
 );
 
-async function mfLoadSessions() {
-  const list = $('mf-sessions');
+async function mfLoadStudentSessions() {
+  const list = $('mf-student-sessions');
   list.innerHTML = '<li>Loading sessions...</li>';
+  try {
+    const sessions = await api('GET', '/mock-interviews/schedule');
+    list.innerHTML = '';
+    if (!sessions.length) {
+      list.innerHTML = '<li>No interview sessions found.</li>';
+      return;
+    }
+    sessions.forEach(session => {
+      const item = document.createElement('li');
+      const details = document.createElement('p');
+      details.textContent = new Date(session.startsAt).toLocaleString() + ' | Status: ' + session.status;
+      item.appendChild(details);
 
-  const sessions = await api('GET', '/mock-interviews/schedule');
-  list.innerHTML = '';
+      if (session.myRole === 'student' && session.status === 'completed') {
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.textContent = 'View Interview Feedback';
+        viewButton.addEventListener('click', async () => {
+          try {
+            const result = await api('GET', '/mock-interviews/sessions/' + encodeURIComponent(session.id));
+            const feedback = document.createElement('p');
+            feedback.textContent = result.feedback ? 'Reviewer Feedback: ' + result.feedback.text : 'No feedback has been submitted yet.';
+            item.appendChild(feedback);
+          } catch (err) {
+            say(err.message, 'err');
+          }
+        });
+        item.appendChild(viewButton);
+      }
+      list.appendChild(item);
+    });
+  } catch (err) {
+    list.innerHTML = '';
+    say(err.message, 'err');
+  }
+}
+onClick('mf-student-load', mfLoadStudentSessions);
 
-  if (!sessions.length) {
-    list.innerHTML = '<li>No interview sessions found.</li>';
+
+// ---- TPO Mock Interview Management ----
+sec('tpo', 'tpo-mock-interviews', 'Manage Mock Interviews',
+  '<h3>Create Interview Slot</h3>' +
+  '<label for="tmi-start">Date and time</label>' +
+  '<input type="datetime-local" id="tmi-start">' +
+  '<label for="tmi-duration">Duration</label>' +
+  '<select id="tmi-duration">' +
+    '<option value="30">30 minutes</option>' +
+    '<option value="45">45 minutes</option>' +
+    '<option value="60">60 minutes</option>' +
+  '</select>' +
+  '<button type="button" id="tmi-create">Create Slot</button>' +
+  '<h3>Booked Mock Interviews and Reviews</h3>' +
+  '<button type="button" id="tmi-load">Load my interview sessions</button>' +
+  '<ul id="tmi-sessions"></ul>'
+);
+
+onClick('tmi-create', async () => {
+  const startValue = $('tmi-start').value;
+  if (!startValue) {
+    say('Please select a date and time.', 'err');
     return;
   }
+  const startDate = new Date(startValue);
+  if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) {
+    say('Please select a future date and time.', 'err');
+    return;
+  }
+  try {
+    await api('POST', '/mock-interviews/slots', {
+      startsAt: startDate.toISOString(),
+      durationMinutes: Number($('tmi-duration').value)
+    });
+    say('Interview slot created successfully!', 'success');
+    $('tmi-start').value = '';
+  } catch (err) {
+    say(err.message, 'err');
+  }
+});
 
-  sessions.forEach((session) => {
-    const item = document.createElement('li');
-
-    const details = document.createElement('p');
-    details.textContent =
-      new Date(session.startsAt).toLocaleString() +
-      ' | Role: ' + session.myRole +
-      ' | Status: ' + session.status;
-
-    item.appendChild(details);
-
-    if (session.myRole === 'reviewer' && session.status === 'booked') {
-      const completeButton = document.createElement('button');
-      completeButton.type = 'button';
-      completeButton.textContent = 'Mark Interview Completed';
-
-      completeButton.addEventListener('click', async () => {
-        completeButton.disabled = true;
-        try {
-          await api(
-            'POST',
-            '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/complete'
-          );
-          say('Interview marked as completed.', 'success');
-          await mfLoadSessions();
-        } catch (err) {
-          say(err.message, 'err');
-          completeButton.disabled = false;
-        }
-      });
-
-      item.appendChild(completeButton);
+async function mfLoadTpoSessions() {
+  const list = $('tmi-sessions');
+  list.innerHTML = '<li>Loading sessions...</li>';
+  try {
+    const sessions = await api('GET', '/mock-interviews/schedule');
+    list.innerHTML = '';
+    if (!sessions.length) {
+      list.innerHTML = '<li>No booked interview sessions yet.</li>';
+      return;
     }
+    sessions.forEach(session => {
+      const item = document.createElement('li');
+      const details = document.createElement('p');
+      details.textContent = new Date(session.startsAt).toLocaleString() +
+        ' | Duration: ' + session.durationMinutes + ' minutes | Status: ' + session.status;
+      item.appendChild(details);
 
-    if (session.myRole === 'reviewer' && session.status === 'completed') {
-      const feedbackInput = document.createElement('textarea');
-      feedbackInput.placeholder = 'Enter interview feedback (maximum 2000 characters)';
-      feedbackInput.maxLength = 2000;
-      feedbackInput.rows = 3;
+      if (session.status === 'booked') {
+        const completeButton = document.createElement('button');
+        completeButton.type = 'button';
+        completeButton.textContent = 'Mark Interview Completed';
+        completeButton.addEventListener('click', async () => {
+          try {
+            await api('POST', '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/complete');
+            say('Interview marked as completed.', 'success');
+            mfLoadTpoSessions();
+          } catch (err) {
+            say(err.message, 'err');
+          }
+        });
+        item.appendChild(completeButton);
+      }
 
-      const submitButton = document.createElement('button');
-      submitButton.type = 'button';
-      submitButton.textContent = 'Submit Feedback';
-
-      submitButton.addEventListener('click', async () => {
-        const feedbackText = feedbackInput.value.trim();
-
-        if (!feedbackText) {
-          say('Please enter feedback first.', 'err');
-          return;
+      if (session.status === 'completed') {
+        if (session.feedback) {
+          const submitted = document.createElement('p');
+          submitted.textContent = 'Feedback submitted: ' + session.feedback.text;
+          item.appendChild(submitted);
+        } else {
+          const feedbackInput = document.createElement('textarea');
+          feedbackInput.placeholder = 'Enter interview feedback';
+          feedbackInput.maxLength = 2000;
+          const submitButton = document.createElement('button');
+          submitButton.type = 'button';
+          submitButton.textContent = 'Submit Feedback';
+          submitButton.addEventListener('click', async () => {
+            const text = feedbackInput.value.trim();
+            if (!text) {
+              say('Please enter feedback first.', 'err');
+              return;
+            }
+            submitButton.disabled = true;
+            try {
+              await api('POST', '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/feedback', { text });
+              say('Feedback submitted successfully!', 'success');
+              mfLoadTpoSessions();
+            } catch (err) {
+              say(err.message, 'err');
+              submitButton.disabled = false;
+            }
+          });
+          item.appendChild(feedbackInput);
+          item.appendChild(submitButton);
         }
-
-        submitButton.disabled = true;
-        try {
-          await api(
-            'POST',
-            '/mock-interviews/sessions/' + encodeURIComponent(session.id) + '/feedback',
-            { text: feedbackText }
-          );
-          say('Interview feedback submitted successfully!', 'success');
-          await mfLoadSessions();
-        } catch (err) {
-          say(err.message, 'err');
-          submitButton.disabled = false;
-        }
-      });
-
-      item.appendChild(feedbackInput);
-      item.appendChild(submitButton);
-    }
-
-    if (session.myRole === 'student') {
-      const viewButton = document.createElement('button');
-      viewButton.type = 'button';
-      viewButton.textContent = 'View Interview Feedback';
-
-      viewButton.addEventListener('click', async () => {
-        try {
-          const details = await api(
-            'GET',
-            '/mock-interviews/sessions/' + encodeURIComponent(session.id)
-          );
-
-          const feedbackDisplay = document.createElement('p');
-
-          feedbackDisplay.textContent = details.feedback
-            ? 'Reviewer Feedback: ' + details.feedback.text
-            : 'Feedback has not been submitted yet.';
-
-          item.appendChild(feedbackDisplay);
-          viewButton.disabled = true;
-        } catch (err) {
-          say(err.message, 'err');
-        }
-      });
-
-      item.appendChild(viewButton);
-    }
-
-    list.appendChild(item);
-  });
+      }
+      list.appendChild(item);
+    });
+  } catch (err) {
+    list.innerHTML = '';
+    say(err.message, 'err');
+  }
 }
-
-onClick('mf-load', mfLoadSessions);
-
+onClick('tmi-load', mfLoadTpoSessions);
 // OIPP-F-003-FRONTEND: Forgot Password
 $('login-section').insertAdjacentHTML('beforeend',
   '<button type="button" id="forgot-toggle">Forgot Password?</button>' +
